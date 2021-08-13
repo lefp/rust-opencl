@@ -14,13 +14,13 @@ kernel void correlate2d(
         gid.x < half_ksize || gid.x >= get_global_size(0) - half_ksize ||
         gid.y < half_ksize || gid.y >= get_global_size(1) - half_ksize
     ) {
-        write_imagef(out, gid, 0.);
+        write_imagef(out, gid, 0);
         return;
     }
 
     // TODO this can probably done with fewer operations
     int2 kernel_center_id = (int2)half_ksize;
-    float4 weighted_sum = 0.;
+    float4 weighted_sum = 0;
     for (int j = -half_ksize; j <= half_ksize; ++j) {
         for (int i = -half_ksize; i <= half_ksize; ++i) {
             int2 offset = (int2)(i, j);
@@ -33,7 +33,6 @@ kernel void correlate2d(
     write_imagef(out, gid, weighted_sum);
 }
 
-// test
 // both images should have format RBGA
 kernel void invert(read_only image2d_t in, write_only image2d_t out) {
     int2 gid = (int2)(get_global_id(0), get_global_id(1));

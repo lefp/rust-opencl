@@ -19,7 +19,6 @@ fn main() {
             .into_rgba8();
     let im_dims = im.dimensions();
     let im_cl = ocl::Image::<u8>::builder()
-        // .context(&ctx)
         .queue(queue.clone())
         .flags(
             MemFlags::READ_ONLY |
@@ -33,9 +32,10 @@ fn main() {
         .dims(im_dims)
         .build().expect("failed to build input cl image");
     
+    // TODO the fact that this uses uint8 data might be a problem, since some
+    // convolution kernels will output floats outside the interval [0., 1.]
     let mut out = RgbaImage::new(im_dims.0, im_dims.1);
     let out_cl = ocl::Image::<u8>::builder()
-        // .context(&ctx)
         .queue(queue.clone())
         .flags(
             MemFlags::WRITE_ONLY |
@@ -45,16 +45,39 @@ fn main() {
         .channel_data_type(ImageChannelDataType::UnormInt8)
         .image_type(MemObjectType::Image2d)
         .dims(im_dims)
-        .build().expect("faield to build output cl image");
+        .build().expect("failed to build output cl image");
     
+    let corr_kernel = [
+        0f32,  1., 0.,
+        1.,   -4., 1.,
+        0.,    1., 0.,
+    ];
+    let kdims = (3, 3);
+    let half_ksize = kdims.0 / 2; // int division
+    let corr_kernel_cl = ocl::Image::<f32>::builder()
+        .queue(queue.clone())
+        .flags(
+            MemFlags::READ_ONLY |
+            MemFlags::HOST_NO_ACCESS |
+            MemFlags::COPY_HOST_PTR
+        )
+        .copy_host_slice(&corr_kernel)
+        .channel_order(ImageChannelOrder::Luminance)
+        .channel_data_type(ImageChannelDataType::Float)
+        .image_type(MemObjectType::Image2d)
+        .dims(kdims)
+        .build().expect("faield to build cl correlation kernel");
+
     let kernel = Kernel::builder()
         .program(&prog)
-        .name("invert")
+        .name("correlate2d")
         .queue(queue.clone())
         .arg(&im_cl)
         .arg(&out_cl)
+        .arg(&corr_kernel_cl)
+        .arg(half_ksize)
         .build().expect("failed to build kernel");
-    // no need to manually copy to `im_cl`: it has `COPY_HOST_PTR` set
+    // no need to copy to input cl images here: they have `COPY_HOST_PTR` set
     unsafe {
         kernel.cmd().global_work_size(&im_dims)
             .enq().expect("failed to enqueue kernel");
