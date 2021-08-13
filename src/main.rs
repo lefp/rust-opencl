@@ -5,29 +5,35 @@ use ocl::{
     enums::{ImageChannelOrder, ImageChannelDataType, MemObjectType},
     flags::MemFlags,
 };
-use image::io::Reader as ImageReader;
+use image::{
+    RgbaImage,
+    io::Reader as ImageReader,
+};
 use cl_util::*;
 
 fn main() {
     let (_plat, _dev, _ctx, queue, prog) = setup_env();
-    let mut im =
+    let im =
         ImageReader::open("gecko.jpg").expect("failed to open image")
             .decode().expect("failed to decode image")
             .into_rgba8();
+    let im_dims = im.dimensions();
     let im_cl = ocl::Image::<u8>::builder()
         // .context(&ctx)
         .queue(queue.clone())
         .flags(
             MemFlags::READ_ONLY |
-            MemFlags::HOST_WRITE_ONLY |
+            MemFlags::HOST_NO_ACCESS |
             MemFlags::COPY_HOST_PTR
         )
         .copy_host_slice(&im)
         .channel_order(ImageChannelOrder::Rgba)
         .channel_data_type(ImageChannelDataType::UnormInt8)
         .image_type(MemObjectType::Image2d)
-        .dims(im.dimensions())
+        .dims(im_dims)
         .build().expect("failed to build input cl image");
+    
+    let mut out = RgbaImage::new(im_dims.0, im_dims.1);
     let out_cl = ocl::Image::<u8>::builder()
         // .context(&ctx)
         .queue(queue.clone())
@@ -38,7 +44,7 @@ fn main() {
         .channel_order(ImageChannelOrder::Rgba)
         .channel_data_type(ImageChannelDataType::UnormInt8)
         .image_type(MemObjectType::Image2d)
-        .dims(im.dimensions())
+        .dims(im_dims)
         .build().expect("faield to build output cl image");
     
     let kernel = Kernel::builder()
@@ -50,14 +56,15 @@ fn main() {
         .build().expect("failed to build kernel");
     // no need to manually copy to `im_cl`: it has `COPY_HOST_PTR` set
     unsafe {
-        kernel.cmd().global_work_size(&im.dimensions())
+        kernel.cmd().global_work_size(&im_dims)
             .enq().expect("failed to enqueue kernel");
     }
 
     // `read` is blocking by default
-    out_cl.read(&mut im).enq().expect("failed to read output cl image");
-    im.save("out.png").expect("failed to write output image to disk");
+    out_cl.read(&mut out).enq().expect("failed to read output cl image");
+    out.save("out.png").expect("failed to write output image to disk");
 }
+
 fn setup_env() -> (Platform, Device, Context, Queue, Program) {
     let plat = any_platform_with_substr("nvidia")
         .expect("failed to find specified platform");
