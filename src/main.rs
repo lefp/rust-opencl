@@ -36,7 +36,6 @@ fn main() {
         .queue(queue.clone())
         .flags(
             MemFlags::READ_WRITE |
-            MemFlags::HOST_READ_ONLY |
             MemFlags::COPY_HOST_PTR
         )
         .copy_host_slice(&im)
@@ -77,10 +76,10 @@ fn main() {
         1.,   -4., 1.,
         0.,    1., 0.,
     ]);
-
     let lap_kernel = correlation_kernel(
         &intermediate_cl, &im_cl, &lap_matrix, &prog, queue.clone()
     );
+
     unsafe {
         gaus_kernel.cmd()
             .enq().expect("failed to enqueue kernel");
@@ -127,9 +126,9 @@ fn correlation_kernel<T: OclPrm> (
         panic!("input and output images must have the same dimensions")
     }
 
-    // int division is intentional
-    let half_size_x = matrix.dims[0] / 2;
-    let half_size_y = matrix.dims[1] / 2;
+    // integer division is intentional
+    let half_size_x = (matrix.dims[0] / 2) as i32; // kernel takes a signed int
+    let half_size_y = (matrix.dims[1] / 2) as i32;
 
     let matrix_cl = ocl::Image::<f32>::builder()
         .queue(queue.clone())
