@@ -2,7 +2,6 @@
 // assumes correlation kernel size is odd
 // assumes correlation kernel is square in shape
 // `half_ksize` is half the size of the correlation kernel, rounded down
-// TODO correlation kernel in local memory?
 kernel void correlate2d(
     read_only image2d_t in, write_only image2d_t out,
     read_only image2d_t corr_kernel, int half_ksize_x, int half_ksize_y
