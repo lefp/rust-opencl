@@ -33,7 +33,7 @@ fn main() {
         .build().expect("failed to build input cl image");
     
     // TODO the fact that this uses uint8 data might be a problem, since some
-    // convolution kernels will output floats outside the interval [0., 1.]
+    // correlation kernels will output floats outside the interval [0., 1.]
     let mut out = RgbaImage::new(im_dims.0, im_dims.1);
     let out_cl = ocl::Image::<u8>::builder()
         .queue(queue.clone())
