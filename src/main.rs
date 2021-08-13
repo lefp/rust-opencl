@@ -8,6 +8,23 @@ use ocl::{
 use image::io::Reader as ImageReader;
 use cl_util::*;
 
+struct CorrelationMatrix {
+    dims: [u32; 2],
+    vals: Vec<f32>,
+}
+impl CorrelationMatrix {
+    fn new(dims: [u32; 2], vals: Vec<f32>) -> Self {
+        assert_eq!(dims[0] % 2, 1, "matrix dimensions must be odd");
+        assert_eq!(dims[1] % 2, 1, "matrix dimensions must be odd");
+        assert_eq!(
+            vals.len() as u32, dims[0] * dims[1],
+            "number of matrix elements ({}) does not match dimensions ({}x{})",
+            vals.len(), dims[0], dims[1],
+        );
+        Self { vals, dims }
+    }
+}
+
 fn main() {
     let (_plat, _dev, _ctx, queue, prog) = setup_env();
     let mut im =
@@ -41,8 +58,8 @@ fn main() {
         .dims(im_dims)
         .build().expect("failed to build output cl image");
     
-    let gaus_dims = [7u32, 7];
-    let gaus_matrix = [ // sigma = 1
+    // sigma = 1
+    let gaus_matrix = CorrelationMatrix::new([7, 7], vec![
         0.0000, 0.0002, 0.0011, 0.0018, 0.0011, 0.0002, 0.0000,
         0.0002, 0.0029, 0.0131, 0.0216, 0.0131, 0.0029, 0.0002,
         0.0011, 0.0131, 0.0586, 0.0966, 0.0586, 0.0131, 0.0011,
@@ -50,25 +67,24 @@ fn main() {
         0.0011, 0.0131, 0.0586, 0.0966, 0.0586, 0.0131, 0.0011,
         0.0002, 0.0029, 0.0131, 0.0216, 0.0131, 0.0029, 0.0002,
         0.0000, 0.0002, 0.0011, 0.0018, 0.0011, 0.0002, 0.0000,
-    ];
+    ]);
     let gaus_kernel = correlation_kernel(
-        &im_cl, &intermediate_cl, &gaus_matrix, &gaus_dims, &prog, queue.clone()
+        &im_cl, &intermediate_cl, &gaus_matrix, &prog, queue.clone()
     );
     
-    let lap_dims = [3u32, 3];
-    let lap_matrix = [
+    let lap_matrix = CorrelationMatrix::new([3, 3], vec![
         0f32,  1., 0.,
         1.,   -4., 1.,
         0.,    1., 0.,
-    ];
+    ]);
 
     let lap_kernel = correlation_kernel(
-        &intermediate_cl, &im_cl, &lap_matrix, &lap_dims, &prog, queue.clone()
+        &intermediate_cl, &im_cl, &lap_matrix, &prog, queue.clone()
     );
     unsafe {
-        gaus_kernel.cmd().global_work_size(&im_dims)
+        gaus_kernel.cmd()
             .enq().expect("failed to enqueue kernel");
-        lap_kernel.cmd().global_work_size(&im_dims)
+        lap_kernel.cmd()
             .enq().expect("failed to enqueue kernel");
     }
 
@@ -104,19 +120,16 @@ fn setup_env() -> (Platform, Device, Context, Queue, Program) {
 
 fn correlation_kernel<T: OclPrm> (
     in_cl_image: &ocl::Image<T>, out_cl_image: &ocl::Image<T>,
-    matrix_vals: &[f32], matrix_dims: &[u32; 2], // TODO impl Integer?
+    matrix: &CorrelationMatrix,
     prog: &Program, queue: Queue,
 ) -> Kernel {
-    if (matrix_dims[0] % 2 != 1) || (matrix_dims[1] % 2 != 1) {
-        panic!("correlation kernel dimensions must be odd");
-    }
-    if matrix_vals.len() as u32 != matrix_dims[0] * matrix_dims[1] {
-        panic!("number of elements in array does not match dimensions");
+    if in_cl_image.dims() != out_cl_image.dims() {
+        panic!("input and output images must have the same dimensions")
     }
 
     // int division is intentional
-    let half_size_x = matrix_dims[0] / 2;
-    let half_size_y = matrix_dims[1] / 2;
+    let half_size_x = matrix.dims[0] / 2;
+    let half_size_y = matrix.dims[1] / 2;
 
     let matrix_cl = ocl::Image::<f32>::builder()
         .queue(queue.clone())
@@ -125,11 +138,11 @@ fn correlation_kernel<T: OclPrm> (
             MemFlags::HOST_NO_ACCESS | 
             MemFlags::COPY_HOST_PTR
         )
-        .copy_host_slice(&matrix_vals)
+        .copy_host_slice(&matrix.vals)
         .channel_order(ImageChannelOrder::Luminance)
         .channel_data_type(ImageChannelDataType::Float)
         .image_type(MemObjectType::Image2d)
-        .dims(matrix_dims)
+        .dims(matrix.dims)
         .build().expect("failed to create correlation matrix on device");
 
     Kernel::builder()
@@ -140,5 +153,6 @@ fn correlation_kernel<T: OclPrm> (
         // TODO we have a reference to a local variable... will `matrix_cl`
         // survive on the gpu after this function returns?
         .arg(&matrix_cl).arg(half_size_x).arg(half_size_y)
+        .global_work_size(in_cl_image.dims())
         .build().expect("failed to build kernel")
 }
