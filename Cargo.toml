@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 ocl = "0.19.3"
+image = "0.23.14"

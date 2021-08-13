@@ -1,9 +1,64 @@
+mod cl_util;
+
 use ocl::{
-    Platform, Device, DeviceType, Context, Queue, Program, Kernel, Buffer,
+    Platform, Device, Context, Queue, Program, Kernel,
+    enums::{ImageChannelOrder, ImageChannelDataType, MemObjectType},
+    flags::MemFlags,
 };
-use std::f32::consts::PI as PI32;
+use image::io::Reader as ImageReader;
+use cl_util::*;
 
 fn main() {
+    let (_plat, _dev, _ctx, queue, prog) = setup_env();
+    let mut im =
+        ImageReader::open("gecko.jpg").expect("failed to open image")
+            .decode().expect("failed to decode image")
+            .into_rgba8();
+    let im_cl = ocl::Image::<u8>::builder()
+        // .context(&ctx)
+        .queue(queue.clone())
+        .flags(
+            MemFlags::READ_ONLY |
+            MemFlags::HOST_WRITE_ONLY |
+            MemFlags::COPY_HOST_PTR
+        )
+        .copy_host_slice(&im)
+        .channel_order(ImageChannelOrder::Rgba)
+        .channel_data_type(ImageChannelDataType::UnormInt8)
+        .image_type(MemObjectType::Image2d)
+        .dims(im.dimensions())
+        .build().expect("failed to build input cl image");
+    let out_cl = ocl::Image::<u8>::builder()
+        // .context(&ctx)
+        .queue(queue.clone())
+        .flags(
+            MemFlags::WRITE_ONLY |
+            MemFlags::HOST_READ_ONLY
+        )
+        .channel_order(ImageChannelOrder::Rgba)
+        .channel_data_type(ImageChannelDataType::UnormInt8)
+        .image_type(MemObjectType::Image2d)
+        .dims(im.dimensions())
+        .build().expect("faield to build output cl image");
+    
+    let kernel = Kernel::builder()
+        .program(&prog)
+        .name("invert")
+        .queue(queue.clone())
+        .arg(&im_cl)
+        .arg(&out_cl)
+        .build().expect("failed to build kernel");
+    // no need to manually copy to `im_cl`: it has `COPY_HOST_PTR` set
+    unsafe {
+        kernel.cmd().global_work_size(&im.dimensions())
+            .enq().expect("failed to enqueue kernel");
+    }
+
+    // `read` is blocking by default
+    out_cl.read(&mut im).enq().expect("failed to read output cl image");
+    im.save("out.png").expect("failed to write output image to disk");
+}
+fn setup_env() -> (Platform, Device, Context, Queue, Program) {
     let plat = any_platform_with_substr("nvidia")
         .expect("failed to find specified platform");
     #[cfg(debug_assertions)]
@@ -18,63 +73,12 @@ fn main() {
         "using device '{}'", dev.name().expect("failed to get device name")
     );
 
-    let context = Context::builder().platform(plat).devices(&dev)
+    let ctx = Context::builder().platform(plat).devices(&dev)
         .build().expect("failed to create context");
-    let queue = Queue::new(&context, dev, None)
+    let queue = Queue::new(&ctx, dev, None)
         .expect("failed to create command queue");
-    let prog = Program::builder().devices(&dev).src_file("src/test_program.cl")
-        .build(&context).expect("failed to build program");
-
-    let mut data = {
-        const SIZE: u32 = 10_000;
-        (0..SIZE).map(|x| x as f32 * PI32 / SIZE as f32).collect::<Vec<f32>>()
-    };
-    let buff = Buffer::<f32>::builder().queue(queue.clone()).len(data.len())
-        .build().expect("failed to build buffer");
-    buff.write(&data).enq().expect("failed to write source data to buffer");
-
-    let kernel = Kernel::builder()
-        .program(&prog)
-        .name("calc_sin")
-        .queue(queue.clone())
-        .arg(&buff)
-        .build().expect("failed to build kernel");
-        // TODO? .global_work_size([]);
-    unsafe {
-        kernel.cmd().global_work_size(buff.len())
-            .enq().expect("failed to enqueue kernel");
-    }
-
-    buff.read(&mut data).enq().expect("failed to write output to host");
-    println!("{:?}", data);
-}
-
-fn any_platform_with_substr(substr: &str) -> Option<Platform> {
-    let substr = &substr.to_ascii_lowercase();
-    Platform::list().into_iter()
-        .find(|plat| {
-            plat.name().unwrap_or_else(|_| {
-                    println!("WARN: ignoring nameless platform");
-                    "".to_string()
-                })
-                .to_ascii_lowercase()
-                .contains(substr)
-        })
-}
-fn any_device_with_substr(substr: &str, platform: &Platform) -> Option<Device> {
-    let substr = &substr.to_ascii_lowercase();
-    Device::list_all(platform).expect("failed to list devices").into_iter()
-        .find(|dev| {
-            dev.name().unwrap_or_else(|_| {
-                println!("WARN: ignoring nameless device");
-                "".to_string()
-            })
-            .to_ascii_lowercase()
-            .contains(substr)
-        })
-}
-fn any_gpu_device(platform: &Platform) -> Option<Device> {
-    Device::list(platform, Some(DeviceType::new().gpu()))
-        .expect("failed to list devices")
-        .into_iter().next()
+    let prog = Program::builder().devices(&dev).src_file("src/program.cl")
+        .build(&ctx).expect("failed to build program");
+    
+    (plat, dev, ctx, queue, prog)
 }
