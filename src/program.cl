@@ -1,28 +1,28 @@
-// alpha channels are treated the same as any others (probably undesirable)
 // correlation kernel should have format LUMINANCE
 // assumes correlation kernel size is odd
 // assumes correlation kernel is square in shape
 // `half_ksize` is half the size of the correlation kernel, rounded down
+// TODO correlation kernel in local memory?
 kernel void correlate2d(
     read_only image2d_t in, write_only image2d_t out,
-    read_only image2d_t corr_kernel, int half_ksize
+    read_only image2d_t corr_kernel, int half_ksize_x, int half_ksize_y
 ) {
     int2 gid = (int2)(get_global_id(0), get_global_id(1));
 
     // image boundary pixels should just be black
     if (
-        gid.x < half_ksize || gid.x >= get_global_size(0) - half_ksize ||
-        gid.y < half_ksize || gid.y >= get_global_size(1) - half_ksize
+        gid.x < half_ksize_x || gid.x >= get_global_size(0) - half_ksize_x ||
+        gid.y < half_ksize_y || gid.y >= get_global_size(1) - half_ksize_y
     ) {
         write_imagef(out, gid, 0);
         return;
     }
 
     // TODO this can probably done with fewer operations
-    int2 kernel_center_id = (int2)half_ksize;
+    int2 kernel_center_id = (int2)(half_ksize_x, half_ksize_y);
     float4 weighted_sum = 0;
-    for (int j = -half_ksize; j <= half_ksize; ++j) {
-        for (int i = -half_ksize; i <= half_ksize; ++i) {
+    for (int j = -half_ksize_y; j <= half_ksize_y; ++j) {
+        for (int i = -half_ksize_x; i <= half_ksize_x; ++i) {
             int2 offset = (int2)(i, j);
 
             float4 weight = read_imagef(corr_kernel, kernel_center_id + offset);

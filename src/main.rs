@@ -47,13 +47,13 @@ fn main() {
         .dims(im_dims)
         .build().expect("failed to build output cl image");
     
+    let kdims = [3u32, 3];
     let corr_kernel = [
         0f32,  1., 0.,
         1.,   -4., 1.,
         0.,    1., 0.,
     ];
-    let kdims = (3, 3);
-    let half_ksize = kdims.0 / 2; // int division
+    let half_ksize = [kdims[0] / 2, kdims[1] / 2]; // int division
     let corr_kernel_cl = ocl::Image::<f32>::builder()
         .queue(queue.clone())
         .flags(
@@ -72,10 +72,8 @@ fn main() {
         .program(&prog)
         .name("correlate2d")
         .queue(queue.clone())
-        .arg(&im_cl)
-        .arg(&out_cl)
-        .arg(&corr_kernel_cl)
-        .arg(half_ksize)
+        .arg(&im_cl).arg(&out_cl)
+        .arg(&corr_kernel_cl).arg(half_ksize[0]).arg(half_ksize[1])
         .build().expect("failed to build kernel");
     // no need to copy to input cl images here: they have `COPY_HOST_PTR` set
     unsafe {
