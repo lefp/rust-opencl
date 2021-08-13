@@ -1,10 +1,10 @@
-// correlation kernel should have format LUMINANCE
-// assumes correlation kernel size is odd
-// assumes correlation kernel is square in shape
-// `half_ksize` is half the size of the correlation kernel, rounded down
+// correlation matrix should have format LUMINANCE
+// assumes correlation matrix size is odd
+// assumes correlation matrix is square in shape
+// `half_ksize` is half the size of the correlation matrix, rounded down
 kernel void correlate2d(
     read_only image2d_t in, write_only image2d_t out,
-    read_only image2d_t corr_kernel, int half_ksize_x, int half_ksize_y
+    read_only image2d_t corr_matrix, int half_ksize_x, int half_ksize_y
 ) {
     int2 gid = (int2)(get_global_id(0), get_global_id(1));
 
@@ -18,13 +18,13 @@ kernel void correlate2d(
     }
 
     // TODO this can probably done with fewer operations
-    int2 kernel_center_id = (int2)(half_ksize_x, half_ksize_y);
+    int2 matrix_center_id = (int2)(half_ksize_x, half_ksize_y);
     float4 weighted_sum = 0;
     for (int j = -half_ksize_y; j <= half_ksize_y; ++j) {
         for (int i = -half_ksize_x; i <= half_ksize_x; ++i) {
             int2 offset = (int2)(i, j);
 
-            float4 weight = read_imagef(corr_kernel, kernel_center_id + offset);
+            float4 weight = read_imagef(corr_matrix, matrix_center_id + offset);
             float4 color = read_imagef(in, gid + offset);
             weighted_sum += weight * color;
         }

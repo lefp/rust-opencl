@@ -5,10 +5,7 @@ use ocl::{
     enums::{ImageChannelOrder, ImageChannelDataType, MemObjectType},
     flags::MemFlags,
 };
-use image::{
-    RgbaImage,
-    io::Reader as ImageReader,
-};
+use image::io::Reader as ImageReader;
 use cl_util::*;
 
 fn main() {
