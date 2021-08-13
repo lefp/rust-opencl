@@ -66,7 +66,7 @@ fn main() {
         .channel_data_type(ImageChannelDataType::Float)
         .image_type(MemObjectType::Image2d)
         .dims(kdims)
-        .build().expect("faield to build cl correlation kernel");
+        .build().expect("failed to build cl correlation kernel");
 
     let kernel = Kernel::builder()
         .program(&prog)
