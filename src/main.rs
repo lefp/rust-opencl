@@ -122,9 +122,10 @@ fn correlation_kernel<T: OclPrm> (
     matrix: &CorrelationMatrix,
     prog: &Program, queue: Queue,
 ) -> Kernel {
-    if in_cl_image.dims() != out_cl_image.dims() {
-        panic!("input and output images must have the same dimensions")
-    }
+    assert_eq!(
+        in_cl_image.dims(), out_cl_image.dims(),
+        "input and output images have different dimensions"
+    );
 
     // integer division is intentional
     let half_size_x = (matrix.dims[0] / 2) as i32; // kernel takes a signed int
