@@ -7,12 +7,12 @@ kernel void correlate2d(
     read_only image2d_t in, write_only image2d_t out,
     read_only image2d_t corr_kernel, int half_ksize
 ) {
-    int2 gid = (int2)(get_global_id(0), get_global_id(255));
+    int2 gid = (int2)(get_global_id(0), get_global_id(1));
 
     // image boundary pixels should just be black
     if (
         gid.x < half_ksize || gid.x >= get_global_size(0) - half_ksize ||
-        gid.y < half_ksize || gid.y >= get_global_size(0) - half_ksize
+        gid.y < half_ksize || gid.y >= get_global_size(1) - half_ksize
     ) {
         write_imagef(out, gid, 0.);
         return;
